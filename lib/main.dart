@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 void main() {
   runApp(const ShopApp());
@@ -17,9 +19,8 @@ class ShopApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFFF4F7F8),
         useMaterial3: true,
       ),
-      home: const ShopStateScope(
-        child: MainShell(),
-      ),
+      builder: (context, child) => ShopStateScope(child: child!),
+      home: const MainShell(),
     );
   }
 }
@@ -40,6 +41,34 @@ class Product {
   final double price;
   final IconData icon;
   final String category;
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'],
+      name: json['name'],
+      description: json['description'],
+      price: json['price'].toDouble(),
+      category: json['category'],
+      icon: _getIconForCategory(json['category']),
+    );
+  }
+
+  static IconData _getIconForCategory(String category) {
+    switch (category) {
+      case '数码':
+        return Icons.headphones;
+      case '生活':
+        return Icons.local_drink;
+      case '办公':
+        return Icons.keyboard;
+      case '出行':
+        return Icons.backpack;
+      case '家居':
+        return Icons.light;
+      default:
+        return Icons.category;
+    }
+  }
 }
 
 class CartItem {
@@ -54,57 +83,67 @@ class CartItem {
   double get subtotal => product.price * quantity;
 }
 
+class Order {
+  Order({
+    required this.id,
+    required this.customer,
+    required this.items,
+    required this.total,
+    required this.createdAt,
+  });
+
+  final int id;
+  final Map<String, dynamic> customer;
+  final List<OrderItem> items;
+  final double total;
+  final DateTime createdAt;
+
+  factory Order.fromJson(Map<String, dynamic> json) {
+    return Order(
+      id: json['id'],
+      customer: json['customer'],
+      items: (json['items'] as List)
+          .map((i) => OrderItem.fromJson(i))
+          .toList(),
+      total: json['total'].toDouble(),
+      createdAt: DateTime.parse(json['createdAt']),
+    );
+  }
+}
+
+class OrderItem {
+  OrderItem({
+    required this.productId,
+    required this.name,
+    required this.quantity,
+    required this.price,
+  });
+
+  final int productId;
+  final String name;
+  final int quantity;
+  final double price;
+
+  factory OrderItem.fromJson(Map<String, dynamic> json) {
+    return OrderItem(
+      productId: json['productId'],
+      name: json['name'],
+      quantity: json['quantity'],
+      price: json['price'].toDouble(),
+    );
+  }
+}
+
 class ShopController extends ChangeNotifier {
-  final List<Product> products = const [
-    Product(
-      id: 1,
-      name: '无线耳机',
-      description: '日常通勤和运动都适合的轻量耳机',
-      price: 299,
-      icon: Icons.headphones,
-      category: '数码',
-    ),
-    Product(
-      id: 2,
-      name: '保温水杯',
-      description: '316 不锈钢内胆，保温持久',
-      price: 89,
-      icon: Icons.local_drink,
-      category: '生活',
-    ),
-    Product(
-      id: 3,
-      name: '办公键盘',
-      description: '静音按键，适合长时间办公输入',
-      price: 199,
-      icon: Icons.keyboard,
-      category: '办公',
-    ),
-    Product(
-      id: 4,
-      name: '极简背包',
-      description: '大容量分区设计，适合通勤短途',
-      price: 159,
-      icon: Icons.backpack,
-      category: '出行',
-    ),
-    Product(
-      id: 5,
-      name: '护眼台灯',
-      description: '三档亮度调节，阅读更舒适',
-      price: 129,
-      icon: Icons.light,
-      category: '家居',
-    ),
-    Product(
-      id: 6,
-      name: '便携音箱',
-      description: '体积小巧，适合宿舍与露营',
-      price: 249,
-      icon: Icons.speaker,
-      category: '数码',
-    ),
-  ];
+  List<Product> _products = [];
+  List<Order> _orders = [];
+  bool _isLoading = false;
+  String? _error;
+
+  List<Product> get products => _products;
+  List<Order> get orders => _orders;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
 
   final List<CartItem> _cartItems = [];
 
@@ -121,6 +160,50 @@ class ShopController extends ChangeNotifier {
   double get discount => subtotal >= 500 ? 30 : 0;
 
   double get total => subtotal + shippingFee - discount;
+
+  Future<void> fetchProducts() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await http.get(Uri.parse('http://127.0.0.1:3000/api/products'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        _products = data.map((item) => Product.fromJson(item)).toList();
+      } else {
+        _error = '无法加载商品: ${response.statusCode}';
+      }
+    } catch (e) {
+      _error = '连接服务器失败: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> fetchOrders() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final response = await http.get(Uri.parse('http://127.0.0.1:3000/api/orders'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        _orders = data.map((item) => Order.fromJson(item)).toList();
+        // Sort by createdAt descending
+        _orders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      } else {
+        _error = '无法加载订单: ${response.statusCode}';
+      }
+    } catch (e) {
+      _error = '连接服务器失败: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
   void addToCart(Product product) {
     final existingIndex =
@@ -183,6 +266,8 @@ class _ShopStateScopeState extends State<ShopStateScope> {
     super.initState();
     controller = ShopController();
     controller.addListener(_handleUpdate);
+    // Fetch products from backend
+    controller.fetchProducts();
   }
 
   @override
@@ -239,6 +324,7 @@ class _MainShellState extends State<MainShell> {
       ),
       const ProductListPage(),
       const CartPage(),
+      const OrdersPage(),
     ];
 
     return Scaffold(
@@ -301,6 +387,11 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.shopping_cart_outlined),
             selectedIcon: Icon(Icons.shopping_cart),
             label: '购物车',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.assignment_outlined),
+            selectedIcon: Icon(Icons.assignment),
+            label: '订单',
           ),
         ],
       ),
@@ -429,6 +520,28 @@ class ProductListPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = ShopStateScope.of(context);
+
+    if (controller.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (controller.error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(controller.error!),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => controller.fetchProducts(),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
 
     return GridView.builder(
       padding: const EdgeInsets.all(16),
@@ -696,6 +809,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _nameController,
+                      autofocus: true,
                       decoration: const InputDecoration(
                         labelText: '收货人姓名',
                         border: OutlineInputBorder(),
@@ -779,22 +893,76 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
               showDialog<void>(
                 context: context,
+                barrierDismissible: false,
                 builder: (dialogContext) {
-                  return AlertDialog(
-                    title: const Text('下单成功'),
-                    content: Text(
-                      '${_nameController.text}，你的订单已提交，订单金额为 ¥${controller.total.toStringAsFixed(0)}。',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          controller.clearCart();
-                          Navigator.of(dialogContext).pop();
-                          Navigator.of(context).pop();
+                  return FutureBuilder<http.Response>(
+                    future: http.post(
+                      Uri.parse('http://127.0.0.1:3000/api/orders'),
+                      headers: {'Content-Type': 'application/json'},
+                      body: json.encode({
+                        'customer': {
+                          'name': _nameController.text,
+                          'phone': _phoneController.text,
+                          'address': _addressController.text,
                         },
-                        child: const Text('完成'),
-                      ),
-                    ],
+                        'items': controller.cartItems
+                            .map((item) => {
+                                  'productId': item.product.id,
+                                  'name': item.product.name,
+                                  'quantity': item.quantity,
+                                  'price': item.product.price,
+                                })
+                            .toList(),
+                        'total': controller.total,
+                      }),
+                    ),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const AlertDialog(
+                          content: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 16),
+                              Text('正在提交订单...'),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError ||
+                          (snapshot.hasData && snapshot.data!.statusCode != 201)) {
+                        return AlertDialog(
+                          title: const Text('下单失败'),
+                          content: Text(snapshot.hasError
+                              ? '网络错误: ${snapshot.error}'
+                              : '服务器错误: ${snapshot.data?.statusCode}'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(),
+                              child: const Text('返回'),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return AlertDialog(
+                        title: const Text('下单成功'),
+                        content: Text(
+                          '${_nameController.text}，您的订单已提交，订单金额为 ¥${controller.total.toStringAsFixed(0)}。',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () {
+                              controller.clearCart();
+                              Navigator.of(dialogContext).pop();
+                              Navigator.of(context).pop();
+                            },
+                            child: const Text('完成'),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               );
@@ -903,6 +1071,97 @@ class _PriceRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class OrdersPage extends StatefulWidget {
+  const OrdersPage({super.key});
+
+  @override
+  State<OrdersPage> createState() => _OrdersPageState();
+}
+
+class _OrdersPageState extends State<OrdersPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ShopStateScope.of(context).fetchOrders();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = ShopStateScope.of(context);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('我的订单')),
+      body: controller.isLoading && controller.orders.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : controller.orders.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.assignment_outlined,
+                          size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      const Text('暂无相关订单',
+                          style: TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: controller.fetchOrders,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: controller.orders.length,
+                    itemBuilder: (context, index) {
+                      final order = controller.orders[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        child: ExpansionTile(
+                          title: Text('订单号: #${order.id}'),
+                          subtitle: Text(
+                              '时间: ${order.createdAt.toString().substring(0, 19)} \n总额: ¥${order.total.toStringAsFixed(2)}'),
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('收货信息',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                      '${order.customer['name']} | ${order.customer['phone']}'),
+                                  Text('${order.customer['address']}'),
+                                  const Divider(height: 24),
+                                  const Text('商品清单',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
+                                  ...order.items.map((item) => Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 4),
+                                        child: Row(
+                                          children: [
+                                            Expanded(child: Text(item.name)),
+                                            Text('x${item.quantity}  ¥${item.price}'),
+                                          ],
+                                        ),
+                                      )),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 }

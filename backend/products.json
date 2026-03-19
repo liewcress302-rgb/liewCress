@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "name": "无线耳机",
+    "description": "日常通勤和运动都适合的轻量耳机",
+    "price": 299,
+    "category": "数码"
+  },
+  {
+    "id": 2,
+    "name": "保温水杯",
+    "description": "316 不锈钢内胆，保温持久",
+    "price": 89,
+    "category": "生活"
+  },
+  {
+    "id": 3,
+    "name": "办公键盘",
+    "description": "静音按键，适合长时间办公输入",
+    "price": 199,
+    "category": "办公"
+  },
+  {
+    "id": 4,
+    "name": "极简背包",
+    "description": "大容量分区设计，适合通勤短途",
+    "price": 159,
+    "category": "出行"
+  },
+  {
+    "id": 5,
+    "name": "护眼台灯",
+    "description": "三档亮度调节，阅读更舒适",
+    "price": 129,
+    "category": "家居"
+  },
+  {
+    "id": 6,
+    "name": "便携音箱",
+    "description": "体积小巧，适合宿舍与露营",
+    "price": 249,
+    "category": "数码"
+  }
+]

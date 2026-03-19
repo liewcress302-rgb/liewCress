@@ -12,5 +12,11 @@ build/
 .vscode/
 *.iml
 
+# Backend
+backend/node_modules/
+backend/*.db
+backend/*.json
+!backend/products.json
+
 # OS
 .DS_Store
